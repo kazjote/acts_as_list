@@ -29,6 +29,8 @@ module ActiveRecord
         # * +scope+ - restricts what is to be considered a list. Given a symbol, it'll attach <tt>_id</tt> 
         #   (if it hasn't already been added) and use that as the foreign key restriction. It's also possible 
         #   to give it an entire string that is interpolated if you need a tighter scope than just a foreign key.
+        # * +ignore_nil+ - record will not be added to any list if scope is set to attribute which is nil during
+        #   save.
         #   Example: <tt>acts_as_list :scope => 'todo_list_id = #{todo_list_id} AND completed = 0'</tt>
         def acts_as_list(options = {})
           configuration = { :column => "position", :scope => "1 = 1" }
@@ -36,6 +38,12 @@ module ActiveRecord
 
           configuration[:scope] = "#{configuration[:scope]}_id".intern if configuration[:scope].is_a?(Symbol) && configuration[:scope].to_s !~ /_id$/
 
+          class_eval <<-EOV
+            class_inheritable_accessor :acts_as_list_configuration
+          EOV
+          
+          self.acts_as_list_configuration = configuration
+          
           if configuration[:scope].is_a?(Symbol)
             scope_condition_method = %(
               def scope_condition
@@ -76,6 +84,7 @@ module ActiveRecord
       module InstanceMethods
         # Insert the item at the given position (defaults to the top position of 1).
         def insert_at(position = 1)
+          return unless in_list?
           insert_at_position(position)
         end
 
@@ -178,6 +187,8 @@ module ActiveRecord
           end
 
           def add_to_list_bottom
+            return if self.class.acts_as_list_configuration[:ignore_nil] && 
+              send(self.class.acts_as_list_configuration[:scope]).nil?
             self[position_column] = bottom_position_in_list.to_i + 1
           end
 
